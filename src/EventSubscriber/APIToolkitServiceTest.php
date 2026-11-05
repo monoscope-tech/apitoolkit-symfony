@@ -131,6 +131,49 @@ class APIToolkitServiceTest extends TestCase
     $this->assertSame(['text/plain'], $payload['request_headers']['accept']);
   }
 
+  public function test_bodies_are_not_captured_by_default(): void
+  {
+    $request = Request::create('/login', 'POST', [], [], [], [], '{"user":"u"}');
+    $response = new Response('{"token":"t"}');
+    $payload = (new APIToolkitService(""))->buildPayload($request, $response, hrtime(true), 'pid');
+    $this->assertSame('', $payload['request_body']);
+    $this->assertSame('', $payload['response_body']);
+
+    $svc = new APIToolkitService("", redactRequestBody: ['$.user'], captureRequestBody: true, captureResponseBody: true);
+    $payload = $svc->buildPayload($request, $response, hrtime(true), 'pid');
+    $this->assertJsonStringEqualsJsonString('{"user":"[CLIENT_REDACTED]"}', base64_decode($payload['request_body']));
+    $this->assertJsonStringEqualsJsonString('{"token":"t"}', base64_decode($payload['response_body']));
+  }
+
+  public function test_credentials_fetch_rejects_untrusted_certificate(): void
+  {
+    // A local HTTPS server with a self-signed certificate that would hand out credentials.
+    $server = <<<'PHP'
+      $key = openssl_pkey_new();
+      $cert = openssl_csr_sign(openssl_csr_new(['commonName' => '127.0.0.1'], $key), null, $key, 1);
+      openssl_x509_export($cert, $pem); openssl_pkey_export($key, $keyPem);
+      $file = tempnam(sys_get_temp_dir(), 'cert'); file_put_contents($file, $pem . $keyPem);
+      $srv = stream_socket_server('tls://127.0.0.1:0', $e, $es, STREAM_SERVER_BIND | STREAM_SERVER_LISTEN,
+        stream_context_create(['ssl' => ['local_cert' => $file]]));
+      echo parse_url(stream_socket_get_name($srv, false), PHP_URL_PORT), "\n";
+      if ($c = @stream_socket_accept($srv, 5)) {
+        fread($c, 4096);
+        fwrite($c, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 21\r\nConnection: close\r\n\r\n{\"project_id\":\"leak\"}");
+        fclose($c);
+      }
+      unlink($file);
+      PHP;
+    $proc = proc_open([PHP_BINARY, '-r', $server], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    try {
+      $port = (int) fgets($pipes[1]);
+      $this->assertGreaterThan(0, $port);
+      $this->assertSame([], (new APIToolkitService("key", rootURL: "https://127.0.0.1:$port"))->getCredentials());
+    } finally {
+      proc_terminate($proc);
+      proc_close($proc);
+    }
+  }
+
   public function test_return_invalid_json_as_is(): void
   {
     $testJSON = 'invalid_json';

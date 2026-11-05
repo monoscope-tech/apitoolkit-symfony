@@ -27,6 +27,8 @@ class APIToolkitService implements EventSubscriberInterface
     private array $redactRequestBody = [],
     private array $redactResponseBody = [],
     private string $rootURL = 'https://app.apitoolkit.io',
+    private bool $captureRequestBody = false,
+    private bool $captureResponseBody = false,
   ) {
     $this->startTimes = new \SplObjectStorage();
     $this->cachePool = new MemoryCacheItemPool();
@@ -91,8 +93,8 @@ class APIToolkitService implements EventSubscriberInterface
       'referer' => $request->headers->get('referer', ''),
       'request_headers' => $this->redactHeaderFields($this->redactHeaders, $request->headers->all()),
       'response_headers' => $this->redactHeaderFields($this->redactHeaders, $response->headers->all()),
-      'request_body' => base64_encode($this->redactJSONFields($this->redactRequestBody, $request->getContent())),
-      'response_body' => base64_encode($this->redactJSONFields($this->redactResponseBody, $response->getContent())),
+      'request_body' => $this->captureRequestBody ? base64_encode($this->redactJSONFields($this->redactRequestBody, $request->getContent())) : '',
+      'response_body' => $this->captureResponseBody ? base64_encode($this->redactJSONFields($this->redactResponseBody, $response->getContent())) : '',
       'sdk_type' => 'PhpSymfony',
       'status_code' => $response->getStatusCode(),
       'timestamp' => (new \DateTime())->format('c'),
@@ -146,7 +148,6 @@ class APIToolkitService implements EventSubscriberInterface
       );
 
       \curl_setopt($curlInit, CURLOPT_HTTPHEADER, $headers);
-      \curl_setopt($curlInit, CURLOPT_SSL_VERIFYPEER, false);
 
       $curlResponse = \curl_exec($curlInit);
       if ($curlResponse == false) {
