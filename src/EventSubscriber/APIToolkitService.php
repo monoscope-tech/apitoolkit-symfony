@@ -168,7 +168,7 @@ class APIToolkitService implements EventSubscriberInterface
   public function redactHeaderFields(array $redactKeys, array $headerFields): array
   {
     array_walk($headerFields, function (&$value, $key, $redactKeys) {
-      if (in_array(strtolower($key), array_map('strtolower', $redactKeys))) {
+      if (in_array(strtolower($key), array_map('strtolower', array_merge($redactKeys, ['authorization', 'cookie', 'set-cookie', 'proxy-authorization'])))) {
         $value = ['[CLIENT_REDACTED]'];
       }
     }, $redactKeys);

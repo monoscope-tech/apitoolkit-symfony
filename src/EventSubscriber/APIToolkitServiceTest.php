@@ -4,6 +4,8 @@ namespace APIToolkit\EventSubscriber;
 
 use PHPUnit\Framework\TestCase;
 use APIToolkit\EventSubscriber;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class APIToolkitServiceTest extends TestCase
 {
@@ -109,6 +111,24 @@ class APIToolkitServiceTest extends TestCase
     $svc = new APIToolkitService("");
     $redactedJSON = $svc->redactJSONFields(['$.store.book[*].category'], $testJSON);
     $this->assertJsonStringEqualsJsonString($expectedJSON, $redactedJSON);
+  }
+
+  public function test_redacts_sensitive_headers_by_default(): void
+  {
+    $request = Request::create('/login', 'POST', [], [], [], [
+      'HTTP_AUTHORIZATION' => 'Bearer abc',
+      'HTTP_COOKIE' => 'sid=1',
+      'HTTP_PROXY_AUTHORIZATION' => 'Basic x',
+      'HTTP_X_API_KEY' => 'key',
+      'HTTP_ACCEPT' => 'text/plain',
+    ]);
+    $response = new Response('ok', 200, ['Set-Cookie' => 'sid=2']);
+    $payload = (new APIToolkitService("", ['X-Api-Key']))->buildPayload($request, $response, hrtime(true), 'pid');
+    foreach (['authorization', 'cookie', 'proxy-authorization', 'x-api-key'] as $h) {
+      $this->assertSame(['[CLIENT_REDACTED]'], $payload['request_headers'][$h], $h);
+    }
+    $this->assertSame(['[CLIENT_REDACTED]'], $payload['response_headers']['set-cookie']);
+    $this->assertSame(['text/plain'], $payload['request_headers']['accept']);
   }
 
   public function test_return_invalid_json_as_is(): void
