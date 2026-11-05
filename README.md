@@ -57,6 +57,9 @@ services:
     APIToolkit\EventSubscriber\APIToolkitService:
       arguments:
         $apiKey: '%env(APITOOLKIT_KEY)%'
+        # Request and response bodies are not captured unless enabled here.
+        $captureRequestBody: false
+        $captureResponseBody: false
 
     # makes classes in src/ available to be used as services
     # this creates a service per class whose id is the fully-qualified class name
